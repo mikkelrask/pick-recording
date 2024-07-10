@@ -13,14 +13,17 @@ __license__ = "MIT"
 import pick
 import os
 import re
+import sys
+from datetime import timedelta
 from datetime import datetime
 from collections import OrderedDict
 from pathlib import Path
 from typing import List, Dict
+from banner import banner
 
-directory = Path("/pool/skadecam")
-file_types = [".mp4"]
-
+directory = Path("/pool/skadecam") # complete path to the directory
+file_types = [".mp4"] # change to your file type. For more than one, seperate with comma
+ascii_banner = 1 # 0 for no banner, 1 for banner
 
 def get_files(directory: Path) -> List[str]:
     """get all files in the listed directory"""
@@ -64,6 +67,25 @@ def remove_duplicates(files: List[str]) -> List[str]:
     """removes duplicates, to unclutter the list"""
     return list(OrderedDict.fromkeys(files))
 
+def filter_files_by_day(files: List[str], days: int) -> List[str]: 
+    """Filter files to only show recordings for the given number of days ago."""
+    if days == 0:
+        target_date = datetime.now().date()
+    else:
+        target_date = (datetime.now() - timedelta(days=days)).date()
+    
+    filtered_files = []
+    for file in files:
+        file_date = datetime.strptime(file.split("-")[0], "%d%m%Y").date()
+        if file_date == target_date:
+            filtered_files.append(file)
+    
+    return filtered_files
+
+def filter_files_by_days(files: List[str], days: int) -> List[str]:
+    """ Filter files to show `n` days back """
+    target_date = datetime.now() - timedelta(days=days)
+    return [file for file in files if datetime.strptime(file.split("-")[0], "%d%m%Y") >= target_date]
 
 def play_selected(
     allFiles: List[str], original_files: Dict[str, str], selected: str
@@ -79,12 +101,25 @@ def play_selected(
 
 def main():
     """List all the unique timestamp/recordings"""
-    title = "  PLEASE SELECT A RECORDING TO PLAY::"
+    if ascii_banner:
+        title = banner()
+    else:
+        title = "  SELECT A TIMESTAMP TO PLAY A RECORDING:"
+    # Check if anything has been passed as an arugment
+    days = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     allFiles = get_files(directory)
     cleaned_files = clean_files(allFiles)
     sorted_files = sort_files(cleaned_files)
     unique_sorted_files = remove_duplicates(sorted_files)
-    pretty_files = format_timestamps(unique_sorted_files)
+    if days > 0:
+        filtered_files = filter_files_by_days(unique_sorted_files, days)
+        pretty_files = format_timestamps(filtered_files)
+    else:
+        filtered_files = filter_files_by_days(unique_sorted_files, 2)
+        pretty_files = format_timestamps(filtered_files)
+    if not pretty_files:
+        print(f"No recordings found for {days} days ago")
+        sys.exit(1)
     file_mapping = create_mapping(unique_sorted_files, pretty_files)
     option, _ = pick.pick(pretty_files, title)
     play_selected(allFiles, file_mapping, option)
